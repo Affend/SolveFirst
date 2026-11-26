@@ -1,0 +1,19 @@
+# Web server
+fastapi==0.165.0
+uvicorn[standard]==0.54.0
+python-multipart==0.0.34   # lets FastAPI receive file uploads
+
+# AI
+google-genai==3.6.1
+
+# Database (TiDB Cloud is MySQL compatible)
+sqlalchemy==2.1.9
+pymysql==1.2.4
+
+# PDF text extraction, quote matching, settings
+pymupdf==2.2
+rapidfuzz==3.14.6
+python-dotenv==1.2.4
+
+# Tests
+pytest==9.2.0

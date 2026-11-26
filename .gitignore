@@ -1,2 +1,11 @@
-GEMINI_API_KEY=AQ.Ab8RN6J4tWAY6KmIWXkdv8iMGrnlXgo6Q3MqFvLIM0vipgfAoA
-GEMINI_MODEL=gemini-3.5-flash
+# Secrets: never commit these
+.env
+certs/
+
+# Uploaded slide decks (student files stay on the local machine)
+uploads/
+
+# Python build and test leftovers
+__pycache__/
+*.pyc
+.pytest_cache/
