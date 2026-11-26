@@ -3,35 +3,85 @@
 Part 1 is the shape we ask Gemini to return. Its JSON schema is sent to Gemini, and the
 same class parses Gemini's answer, so the shape is defined in exactly one place.
 Part 2 is what our API endpoints return.
+
+Math format: formula and work are LaTeX (no $ signs). Text fields are normal sentences
+with inline math written as $...$, e.g. "The dynamic range is $DR = 6$ V."
 """
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+# ---------- LaTeX safety net ----------
+
+# In JSON, "\f" means form feed and "\t" means tab. If Gemini writes LaTeX such as \frac or
+# \times with a single backslash, JSON turns it into a control character + "rac" / "imes".
+# Those control characters never belong in our text, so we turn them back into LaTeX.
+_CONTROL_TO_LATEX = {"\t": "\\t", "\x0c": "\\f", "\x08": "\\b", "\r": "\\r", "\x0b": "\\v"}
+
+
+def repair_latex(text: str, single_line: bool = False) -> str:
+    """Undo JSON escapes that ate a LaTeX backslash. In one-line LaTeX, a newline was "\\n" too."""
+    for control, latex in _CONTROL_TO_LATEX.items():
+        text = text.replace(control, latex)
+    if single_line:
+        text = text.replace("\n", "\\n")  # e.g. \neq, \nu
+    return text
+
 
 # ---------- Part 1: what Gemini must return ----------
 
 
 class ExtractedStep(BaseModel):
-    text: str = Field(description="What to do in this step.")
-    reason: str = Field(description="Why this step is done.")
+    text: str = Field(description="What this step does, in one short sentence.")
+    formula: str = Field(description="The formula used, in LaTeX without $. Empty string if none.")
+    work: list[str] = Field(
+        description="The substitution and calculation in LaTeX without $, one line per item, "
+        'e.g. ["DR = x_{max} - x_{min}", "= 3 - (-3) = 6"]. Empty list if nothing is computed.'
+    )
+    result: str = Field(description="The value obtained in this step, with units. Empty string if none.")
+    reason: str = Field(description="Why this step is needed.")
     page_number: int = Field(
-        description="The n of the '=== PAGE n ===' marker where this step is shown. "
+        description="The n of the '=== PAGE n ===' marker where this step or its result is shown. "
         "For AI-derived steps, the page where the problem is."
     )
     source_quote: str = Field(
-        description="Text copied exactly, character for character, from that page that shows "
-        "this step. Empty string when ai_derived is true."
+        description="Plain text copied exactly, character for character, from that page's text "
+        "that shows this step. Empty string when ai_derived is true."
     )
     ai_derived: bool = Field(
-        description="false if the step is shown in the slides; true if you filled it in."
+        description="true only if neither this step nor its result is shown in the slides."
     )
+
+    @field_validator("formula")
+    @classmethod
+    def _repair_formula(cls, value: str) -> str:
+        return repair_latex(value, single_line=True)
+
+    @field_validator("work")
+    @classmethod
+    def _repair_work(cls, lines: list[str]) -> list[str]:
+        return [repair_latex(line, single_line=True) for line in lines if line.strip()]
+
+    @field_validator("text", "result", "reason")
+    @classmethod
+    def _repair_text(cls, value: str) -> str:
+        return repair_latex(value)
 
 
 class ExtractedProblem(BaseModel):
     title: str = Field(description="Short title of the example problem.")
+    page_number: int = Field(
+        description="The n of the '=== PAGE n ===' marker where the problem statement is shown."
+    )
     given: str = Field(description="What is known in the problem.")
     asked: str = Field(description="What must be found.")
     concept: str = Field(description="The main concept or formula used.")
     steps: list[ExtractedStep] = Field(description="The solution steps, in order.")
+    final_answer: str = Field(description="The final answer in one sentence, with value and units.")
+
+    @field_validator("given", "asked", "concept", "final_answer")
+    @classmethod
+    def _repair_text(cls, value: str) -> str:
+        return repair_latex(value)
 
 
 class ExtractionResult(BaseModel):
@@ -49,11 +99,23 @@ class StepOut(BaseModel):
 
     step_number: int
     text: str
+    formula: str | None  # None for steps saved before worked calculations existed
+    work: list[str]  # LaTeX lines; stored in the database as one text with a line per entry
+    result: str | None
     reason: str
     page_number: int
     source_quote: str
-    ai_derived: bool
-    quote_verified: bool
+    ai_derived: bool  # Gemini says: neither this step nor its result is in the slides
+    quote_verified: bool  # our check found source_quote on that page
+
+    @field_validator("work", mode="before")
+    @classmethod
+    def _split_work_lines(cls, value: object) -> object:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            return [line for line in value.split("\n") if line.strip()]
+        return value
 
 
 class ProblemOut(BaseModel):
@@ -62,21 +124,35 @@ class ProblemOut(BaseModel):
     id: int
     position: int
     title: str
+    page_number: int | None  # page where the problem is stated (None only for very old rows)
     given: str
     asked: str
     concept: str
     steps: list[StepOut]
+    final_answer: str | None
 
 
 class ProblemsResponse(BaseModel):
-    document_id: int
+    document_id: str  # the random public id used in web addresses
+    filename: str
+    page_count: int
+    model_name: str | None  # the Gemini model that found these problems
+    is_sample: bool  # a stored demo sample: opens without an AI call, can't be re-processed
     cached: bool  # True when the result came from the database, not a new Gemini call
     message: str
     problems: list[ProblemOut]
 
 
+class SampleOut(BaseModel):
+    document_id: str
+    filename: str
+    page_count: int
+    problem_count: int
+    model_name: str | None
+
+
 class UploadResponse(BaseModel):
-    document_id: int
+    document_id: str  # the random public id used in web addresses
     filename: str
     page_count: int
     pages_with_text: int

@@ -9,6 +9,7 @@ google-genai==3.6.1
 # Database (TiDB Cloud is MySQL compatible)
 sqlalchemy==2.1.9
 pymysql==1.2.4
+certifi==2026.11.20   # trusted certificates for the TiDB SSL connection (no CA file needed)
 
 # PDF text extraction, quote matching, settings
 pymupdf==2.2

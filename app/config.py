@@ -1,4 +1,7 @@
-"""Reads all settings from .env once, so the rest of the app never touches os.environ.
+"""Reads all settings once, so the rest of the app never touches os.environ.
+
+Locally the values come from .env. On the hosting platform there is no .env: the same
+names are set as environment variables in the platform's dashboard.
 
 Secret values are never printed or logged: the Settings class has repr=False,
 so even print(settings) only shows "<Settings object at ...>".
@@ -8,13 +11,15 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+import certifi
 from dotenv import load_dotenv
 
 # The folder that holds app/, .env and certs/. Relative paths are resolved from here,
 # so the server works no matter which folder it is started from.
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-# Values already set in the shell win over .env (load_dotenv does not override them).
+# Values already set in the shell or by the platform win over .env (load_dotenv does not
+# override them). Without a .env file this line simply does nothing.
 load_dotenv(PROJECT_ROOT / ".env")
 
 
@@ -45,6 +50,7 @@ class Settings:
     tidb_ca_path: Path
     max_upload_mb: int
     upload_dir: Path
+    frontend_origins: tuple[str, ...]  # web addresses allowed to call this API from a browser
 
 
 settings = Settings(
@@ -56,7 +62,15 @@ settings = Settings(
     tidb_user=_required("TIDB_USER"),
     tidb_password=_required("TIDB_PASSWORD"),
     tidb_database=_required("TIDB_DATABASE"),
-    tidb_ca_path=_project_path(_required("TIDB_CA_PATH")),
+    # Optional. Empty = use certifi's certificate list, which includes the one TiDB Cloud uses
+    # (ISRG Root X1), so the server needs no certificate file.
+    tidb_ca_path=_project_path(os.environ["TIDB_CA_PATH"]) if os.getenv("TIDB_CA_PATH") else Path(certifi.where()),
     max_upload_mb=int(os.getenv("MAX_UPLOAD_MB", "30")),
     upload_dir=PROJECT_ROOT / "uploads",
+    # The Vite dev server runs on port 5173. Comma-separated list if you need others.
+    frontend_origins=tuple(
+        origin.strip()
+        for origin in os.getenv("FRONTEND_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")
+        if origin.strip()
+    ),
 )

@@ -6,8 +6,10 @@ for new projects, and the same API that test_gemini.py uses.
 
 import base64
 import logging
+import re
 
 from google import genai
+from google.genai import types
 from pydantic import ValidationError
 
 from app.config import settings
@@ -25,27 +27,40 @@ page number counted from 1.
 
 Task: find the EXAMPLE PROBLEMS that already appear in the slides (worked examples,
 "Example", "Contoh soal", exercises with numbers, and so on) and present each one
-"problem first".
+"problem first", with the full working.
 
 Rules:
 1. Only use problems that are already in the slides. Never invent a new problem.
    If the deck has no example problems, return {"problems": []}.
-2. For each problem give: title (short), given (what is known), asked (what must be
-   found), concept (the main idea or formula used), and steps (the solution in order).
+2. For each problem give: title (short), page_number (the n of the "=== PAGE n ==="
+   marker where the problem statement is shown), given (what is known), asked (what must
+   be found), concept (the main idea or formula used), steps (the solution in order), and
+   final_answer (one sentence with the final value and its units).
 3. For each step:
-   - text: what to do in this step.
-   - reason: why this step is done.
-   - page_number: the n of the "=== PAGE n ===" marker of the page that shows this step.
-     Use the PDF page number from the marker, NOT a slide number printed on the slide.
-   - source_quote: a short piece of text (about one line) copied exactly, character
-     for character, from that page's text below, that shows this step.
-     Do not paraphrase, translate, or fix typos in the quote.
-   - ai_derived: false if the step is shown in the slides; true if the slides skip it
-     and you filled it in. For AI-derived steps, set source_quote to "" and page_number
-     to the page where the problem is.
-4. If a problem in the slides has no worked solution, you may still include it, but
-   then every step you write must have ai_derived = true.
-5. Write title, given, asked, concept, text and reason in the same language as the slides.
+   - text: what this step does, in one short sentence.
+   - formula: the formula used, in LaTeX. Empty string if the step uses no formula.
+   - work: the substitution and calculation in LaTeX, one line per list item, for example
+     ["DR = x_{max} - x_{min}", "= 3 - (-3) = 6"]. Empty list if nothing is computed.
+   - result: the value obtained in this step, with units if any. Empty string if none.
+   - reason: why this step is needed.
+   - page_number: the n of the "=== PAGE n ===" marker of the page that shows this step
+     or its result. Use the PDF page number from the marker, NOT a slide number printed
+     on the slide.
+   - source_quote: a short piece of text (about one line) copied exactly, character for
+     character, from that page's text below. Copy it as plain text exactly as it appears
+     in the page text, not rewritten as LaTeX. Do not paraphrase, translate, or fix typos.
+   - ai_derived: true only if neither this step nor its result is shown in the slides.
+     If the slides show the result but skip the arithmetic, ai_derived is false.
+     For AI-derived steps, set source_quote to "" and page_number to the page where the
+     problem is.
+4. Every step that computes something must show the formula, the substituted values, and
+   the result. Do not skip arithmetic, even when the slides skip it.
+5. If a problem in the slides has no worked solution, you may still include it, but then
+   every step you write must have ai_derived = true.
+6. Math format: formula and each line of work are LaTeX without $ signs. In text, result,
+   reason, given, asked, concept and final_answer, write normal sentences and put math
+   inside $...$, for example "The dynamic range is $DR = 6$ V."
+7. Follow the notation and the language of the slides.
 """
 
 
@@ -54,6 +69,11 @@ class GeminiError(Exception):
 
     status_code = 502
     message = "Gemini returned an unexpected response. Please try again."
+
+    def __init__(self, message: str | None = None):
+        super().__init__()
+        if message:
+            self.message = message  # replace the default text with a more specific one
 
 
 class GeminiQuotaError(GeminiError):
@@ -76,7 +96,37 @@ class GeminiAuthError(GeminiError):
     message = "Gemini rejected the API key. Check GEMINI_API_KEY in .env."
 
 
-client = genai.Client(api_key=settings.gemini_api_key)
+client = genai.Client(
+    api_key=settings.gemini_api_key,
+    http_options=types.HttpOptions(
+        retry_options=types.HttpRetryOptions(
+            # Every attempt counts against the free-tier daily limit (20 requests per day),
+            # so try at most twice: the original request plus one retry.
+            attempts=2,
+            # Retry only when Google is overloaded or slow. Never retry 429 (quota):
+            # retrying cannot help, and the student gets the real wait time instead.
+            http_status_codes=[408, 500, 502, 503, 504],
+        )
+    ),
+)
+
+
+def quota_message(error_text: str) -> str:
+    """Build a clear 429 message from Google's error text, including how long to wait.
+
+    Google's text looks like: "... (limit: 20 requests per day on Free Tier).
+    Please retry in 15h6m4s or upgrade your tier ..."
+    """
+    message = "Gemini quota exceeded."
+    limit = re.search(r"limit: ([^)]+)\)", error_text)
+    if limit:
+        message += f" Limit: {limit.group(1)}."
+    wait = re.search(r"retry in ([0-9hms.]+)", error_text)
+    if wait:
+        message += f" Try again in {wait.group(1).rstrip('.')}."
+    else:
+        message += " Wait a minute and try again."
+    return message
 
 
 def build_page_text(page_texts: list[str]) -> str:
@@ -98,7 +148,7 @@ def _translate_error(exc: Exception) -> GeminiError:
     if is_timeout:
         return GeminiTimeoutError()
     if status == 429:
-        return GeminiQuotaError()
+        return GeminiQuotaError(quota_message(str(exc)))
     if status in (500, 503):
         return GeminiBusyError()
     if status in (401, 403) or (status == 400 and "api key" in str(exc).lower()):

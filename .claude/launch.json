@@ -6,6 +6,12 @@
       "runtimeExecutable": "C:\\Users\\acer\\miniforge3\\envs\\solvefirst\\python.exe",
       "runtimeArgs": ["-m", "uvicorn", "app.main:app", "--port", "8000"],
       "port": 8000
+    },
+    {
+      "name": "solvefirst-web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "frontend", "run", "dev"],
+      "port": 5173
     }
   ]
 }
