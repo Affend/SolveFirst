@@ -12,6 +12,12 @@ export function problemPage(problem: Problem): number | null {
   return problem.page_number ?? problem.steps[0]?.page_number ?? null;
 }
 
+/** The formulas a problem's steps use, each once, in the order they first appear. */
+export function formulasUsed(problem: Problem): string[] {
+  const formulas = problem.steps.map((step) => step.formula?.trim() ?? "").filter(Boolean);
+  return [...new Set(formulas)];
+}
+
 /** Number of steps the AI filled in (not shown in the slides). */
 export function countAiDerived(problem: Problem): number {
   return problem.steps.filter((step) => step.ai_derived).length;

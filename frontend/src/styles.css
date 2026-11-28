@@ -689,6 +689,12 @@ a {
   margin-bottom: 10px;
 }
 
+/* "Formulas used": one equation per row, under the problem's Concept. */
+.formula-list {
+  display: grid;
+  gap: 6px;
+}
+
 /* The working: a highlighted block with one calculation line per row. */
 .work-block {
   display: grid;

@@ -31,6 +31,8 @@ Task: find the EXAMPLE PROBLEMS that already appear in the slides (worked exampl
 
 Rules:
 1. Only use problems that are already in the slides. Never invent a new problem.
+   Check every page and return EVERY example problem, including exercises ("Latihan")
+   and problems that build on an earlier example. Do not stop after the first few.
    If the deck has no example problems, return {"problems": []}.
 2. For each problem give: title (short), page_number (the n of the "=== PAGE n ==="
    marker where the problem statement is shown), given (what is known), asked (what must
@@ -53,11 +55,21 @@ Rules:
      If the slides show the result but skip the arithmetic, ai_derived is false.
      For AI-derived steps, set source_quote to "" and page_number to the page where the
      problem is.
-4. Every step that computes something must show the formula, the substituted values, and
-   the result. Do not skip arithmetic, even when the slides skip it.
-5. If a problem in the slides has no worked solution, you may still include it, but then
-   every step you write must have ai_derived = true.
-6. Math format: formula and each line of work are LaTeX without $ signs. In text, result,
+4. Show the equations. Every step that computes, updates or checks a value must have all
+   three: formula (the general equation or rule, for example the interval update rule or
+   the DFT sum), work (the values substituted into it, then the arithmetic, one line per
+   item), and result. Do not skip arithmetic, even when the slides skip it. Leave formula
+   and work empty only for steps that compute nothing, such as listing the given values.
+   If the same rule is applied many times (to each symbol, sample or table row), write the
+   rule once as the formula and one work line for each time it is applied. Show every
+   iteration; never jump from an early iteration straight to the final answer.
+   Every problem that involves any calculation must have at least one step with a formula.
+5. If a problem in the slides has no worked solution, still include it and solve it
+   yourself, with the same full working. Every step you write for it must then have
+   ai_derived = true.
+6. Math format: formula and each line of work are LaTeX without $ signs. Write proper
+   LaTeX, not code: subscripts in braces (x_{max}), multi-letter names as \\text{...}
+   (\\text{low}, \\text{range}), and \\cdot for multiplication, never *. In text, result,
    reason, given, asked, concept and final_answer, write normal sentences and put math
    inside $...$, for example "The dynamic range is $DR = 6$ V."
 7. Follow the notation and the language of the slides.

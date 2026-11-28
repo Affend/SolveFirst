@@ -8,6 +8,8 @@ Math format: formula and work are LaTeX (no $ signs). Text fields are normal sen
 with inline math written as $...$, e.g. "The dynamic range is $DR = 6$ V."
 """
 
+import re
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # ---------- LaTeX safety net ----------
@@ -25,6 +27,22 @@ def repair_latex(text: str, single_line: bool = False) -> str:
     if single_line:
         text = text.replace("\n", "\\n")  # e.g. \neq, \nu
     return text
+
+
+# Gemini sometimes writes math like code. In LaTeX, "_" only puts the NEXT character in the
+# subscript, so "x_max" shows as x with subscript m then "ax", and "new_interval" shows as
+# "new" with subscript i then "nterval". "*" shows as an asterisk instead of a dot.
+_LETTER_SUBSCRIPT = re.compile(r"(?<![\\A-Za-z])([A-Za-z])_([A-Za-z0-9]{2,})(?![A-Za-z0-9])")
+_NAME_WITH_UNDERSCORE = re.compile(r"(?<![\\A-Za-z])([A-Za-z]{2,})_([A-Za-z]{2,})(?![A-Za-z0-9])")
+_TIMES_STAR = re.compile(r"(?<![\^{])\s*\*\s*")
+
+
+def tidy_latex(latex: str) -> str:
+    """Fix code-style math so KaTeX shows it as meant: x_max -> x_{max},
+    new_interval -> new\\_interval (one name), a*b -> a \\cdot b."""
+    latex = _LETTER_SUBSCRIPT.sub(r"\1_{\2}", latex)
+    latex = _NAME_WITH_UNDERSCORE.sub(r"\1\\_\2", latex)
+    return _TIMES_STAR.sub(r" \\cdot ", latex)
 
 
 # ---------- Part 1: what Gemini must return ----------
@@ -116,6 +134,18 @@ class StepOut(BaseModel):
         if isinstance(value, str):
             return [line for line in value.split("\n") if line.strip()]
         return value
+
+    # Tidied when sent to the web app (not when saved), so results stored earlier display
+    # correctly too.
+    @field_validator("formula")
+    @classmethod
+    def _tidy_formula(cls, value: str | None) -> str | None:
+        return tidy_latex(value) if value else value
+
+    @field_validator("work")
+    @classmethod
+    def _tidy_work(cls, lines: list[str]) -> list[str]:
+        return [tidy_latex(line) for line in lines]
 
 
 class ProblemOut(BaseModel):

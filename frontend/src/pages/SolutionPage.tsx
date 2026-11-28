@@ -5,7 +5,7 @@ import { Layout } from "../components/Layout";
 import { MathBlock, RichText } from "../components/Math";
 import { SampleBadge } from "../components/SampleBadge";
 import { SlidePanel } from "../components/SlidePanel";
-import { problemPage } from "../format";
+import { formulasUsed, problemPage } from "../format";
 import { useProblems } from "../useProblems";
 
 // Shown on hover over "Page reference not auto-verified".
@@ -68,6 +68,7 @@ export function SolutionPage() {
   const shownStep = problem.steps.find((step) => step.step_number === activeStep);
   const shownPage = shownStep?.page_number ?? problemPage(problem);
   const hasAiSteps = problem.steps.some((step) => step.ai_derived);
+  const formulas = formulasUsed(problem);
 
   function showSlideFor(stepNumber: number) {
     setActiveStep(stepNumber);
@@ -108,6 +109,17 @@ export function SolutionPage() {
               <RichText text={problem.concept} />
             </p>
           </section>
+          {/* The equations the steps below use, as a quick overview before the working. */}
+          {formulas.length > 0 && (
+            <section className="field">
+              <h2>Formulas used</h2>
+              <div className="formula-list">
+                {formulas.map((formula) => (
+                  <MathBlock key={formula} latex={formula} />
+                ))}
+              </div>
+            </section>
+          )}
 
           <section>
             <h2 className="steps-title">Steps</h2>

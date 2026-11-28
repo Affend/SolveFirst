@@ -40,7 +40,13 @@ The web app in `frontend/` only talks to these endpoints. It never calls Gemini 
 - `page_number` and `source_quote`
 
 Each problem also gets a `final_answer`. Text fields write inline math as `$...$`. The web app
-renders all math with KaTeX.
+renders all math with KaTeX, and lists each problem's formulas once under **Formulas used**
+(collected from its steps), before the working.
+
+The prompt requires a formula, working and result for every step that computes something. Leaving
+them empty is allowed only for steps that compute nothing, and every problem with a calculation
+must have at least one formula. Decks processed before worked calculations were added have no
+formulas; run **Find problems again** on them.
 
 **Two separate labels per step:**
 - `ai_derived` comes from Gemini: neither the step nor its result is shown in the slides. The
@@ -158,7 +164,7 @@ You need **two terminals**: one for the backend, one for the web app.
 1. Choose a slide PDF and click **Find example problems**. A new deck can take 1–3 minutes.
    A deck that was already processed comes back instantly from the database.
 2. Click **See the problems**. You see every example problem with the page it comes from.
-3. Open a problem: Given, Asked, Concept, then the numbered steps with their reasons.
+3. Open a problem: Given, Asked, Concept, Formulas used, then the numbered steps with their reasons.
 4. Click **Page N** on any step to show that slide beside the explanation. On a phone, the slide
    opens full screen; tap **Close** to go back. Steps labeled **AI-derived** are not shown in
    the slides and should be checked.
@@ -293,6 +299,11 @@ day (20 at the time of writing). The limit resets at midnight US Pacific time (1
 To save quota, the app retries a failed Gemini call at most once, and only when Google is
 overloaded (500/503) or slow, never on 429. Processing a deck again that is already processed
 is free: it is served from TiDB.
+
+**Which model:** we use `gemini-3.5-flash`. On the 19-page Arithmetic Coding deck it found all
+8 example problems with correct working, while `gemini-3.1-flash-lite` found only 2. Flash-lite
+is faster and is the fallback when 3.5-flash is overloaded (503) or out of quota: set
+`GEMINI_MODEL` to it and process the deck again.
 
 ## Unit tests
 
